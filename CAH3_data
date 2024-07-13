@@ -1,0 +1,113 @@
+library(readxl)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(writexl)
+
+
+
+
+
+NSS24_Summary_Taught_All_modes <- read_excel("C:/Users/lrmacha/Downloads/NSS24_Summary_Taught_All_modes.xlsx", 
+                                             sheet = "CAH_level_3")
+
+
+df = NSS24_Summary_Taught_All_modes
+
+
+# Step 2: Assign the third row as column names
+colnames(df) <- as.character(unlist(df[3, ]))
+
+# Step 3: Remove the third row from the data frame
+df <- df[-3, ]
+
+# Assuming the column name is "Provider Name"
+df_filtered <- df %>% filter(`Provider name` == "University of Northampton, The")
+
+#filter on all undergrads
+df_filtered2 <- df_filtered %>% filter(`Level of study` == "All undergraduates")
+
+# Assuming df_filtered2 is already filtered based on 'Provider Name'
+df_filtered3 <- df_filtered2 %>% filter(str_starts(Question, "Q"))
+
+########################
+
+# Step 1: Identify unique subjects
+unique_subjects <- unique(df_filtered3$Subject)
+
+# Step 2: Initialize an empty list to store data frames
+list_of_dataframes <- list()
+
+# Step 3: Iterate over each unique subject
+for (subject in unique_subjects) {
+  # Step 4: Filter rows for the current subject
+  subset_df <- df_filtered3 %>% filter(Subject == subject)
+  
+  # Extract positivity measures for the current subject
+  positivity_measures <- subset_df$`Positivity measure (%)`
+  
+  # Create a data frame with the current subject as column header
+  df <- data.frame(subject = subject, `Positivity measure (%)` = positivity_measures)
+  
+  # Append the data frame to the list
+  list_of_dataframes[[subject]] <- df
+}
+
+# Combine all data frames in the list into a single data frame
+df_matrix <- bind_rows(list_of_dataframes)
+
+# Pivot the data frame to create a matrix-like structure
+df_matrix_wide <- df_matrix %>%
+  mutate(row_id = row_number()) %>%
+  pivot_wider(names_from = subject, values_from = Positivity.measure....) %>%
+  select(-row_id)
+
+
+# Convert all columns to numeric
+df_numeric <- as.data.frame(apply(df_matrix_wide, 2, as.numeric))
+
+# Renaming columns with spaces to use underscores or remove spaces
+names(df_numeric) <- gsub(" ", "_", names(df_numeric))  # Replace spaces with underscores
+
+# Remove brackets from column names
+names(df_numeric) <- gsub("[()]", "", names(df_numeric))
+
+# Replace hyphens with underscores in column names
+names(df_numeric) <- gsub("-", "_", names(df_numeric))
+
+##################
+
+# Function to shift non-missing values to the top
+shift_values <- function(column) {
+  non_missing <- na.omit(column)  # Get non-missing values
+  length_diff <- length(column) - length(non_missing)  # Calculate length difference
+  shifted_column <- c(non_missing, rep(NA, length_diff))  # Shift values and append NAs
+  return(shifted_column)
+}
+
+# Apply the function to each column
+df_shifted <- as.data.frame(lapply(df_numeric, shift_values))
+
+##############
+# Step 1: Identify unique subjects
+unique_questions <- unique(df_filtered3$Question)
+
+All_questions = as.data.frame(unique_questions)
+
+# Concatenate dataframes
+combined_df <- cbind(All_questions, df_shifted)
+
+
+Finished <- head(combined_df, 27)
+
+
+# Write the data frame to an Excel file
+write_xlsx(Finished, "C:/Users/lrmacha/Downloads/NSS_data.xlsx")
+
+print(Finished)
+
+
+
+
+
+

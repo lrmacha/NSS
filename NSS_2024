@@ -1,0 +1,122 @@
+library(readxl)
+library(factoextra)
+library(cluster)
+library(viridis)
+library(pheatmap)
+library(cluster)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
+library(dendextend)
+
+
+# Read data from Excel file using a relative path
+
+##CAH level 3 data file
+df <- read_excel("C:/Users/NSS_data.xlsx", 
+                       sheet = "Sheet4")
+
+##BIMI provided data file
+df <- read_excel("C:/Users/BIMI.xlsx", 
+                 sheet = "Sheet4")
+
+df_trans = t(df)
+df_trans = as.data.frame(df_trans)
+
+
+# Calculate the dissimilarity matrix
+diss_matrix <- dist(as.matrix(df_trans[-1,]), method = "euclidean")
+
+# Create an empty vector to store within-cluster sum of squares
+wss <- numeric(length = 10)  # Assuming a maximum of 10 clusters
+
+# Calculate within-cluster sum of squares for different numbers of clusters
+for (i in 1:10) {
+  kmeans_result <- kmeans(as.matrix(df_trans[-1,]), centers = i)
+  wss[i] <- sum(kmeans_result$withinss)
+}
+
+# Plot the elbow method
+plot(1:10, wss, type = "b", xlab = "Number of Clusters",
+     ylab = "Within-cluster Sum of Squares",
+     main = "Elbow Method to Determine Optimal Number of Clusters")
+
+# Identify the "elbow" or optimal number of clusters
+elbow_point <- which(diff(wss) == max(diff(wss))) + 1
+abline(v = elbow_point, col = "red", lty = 2)
+
+# Perform hierarchical clustering using the optimal number of clusters
+optimal_clusters <- elbow_point
+hc <- hclust(diss_matrix, method = "ward.D2")
+clusters <- cutree(hc, k = optimal_clusters)
+
+###################Production of dendrogram
+
+# Visualize the dendrogram with optimal clusters
+dend_plot <- fviz_dend(hc, k = optimal_clusters, rect = TRUE,
+                       rect_border = "black", rect_fill = FALSE,
+                       cex = 0.3, 
+                       k_colors = "jco", color_labels_by_k = TRUE,
+                       main = paste("Hierarchical Clustering with", optimal_clusters, "Clusters"),
+                       ggtheme = theme_minimal(),
+                       type = "rectangle")
+
+# Adjust theme settings for better text visibility and rotate the plot
+dend_plot + 
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    axis.title.x = element_text(size = 12, face = "bold"),
+    axis.title.y = element_text(size = 12, face = "bold"),
+    axis.text.x = element_text(size = 10 * 0.5, angle = 90, hjust = 1, vjust = 0.5),  # Adjust size for x-axis
+    axis.text.y = element_text(size = 10 * 0.7),  # Adjust size for y-axis
+    plot.margin = unit(c(0, 0, 0, 0), "cm")  # Adjust margin size
+  )
+
+
+####################### Production of heatmap
+# Ensure all data is numeric
+df_trans <- data.frame(lapply(df_trans, function(x) as.numeric(as.character(x))))
+rownames(df_trans) <- colnames(df)[]
+
+
+# Create a heatmap of the clustered data
+# Assuming the first row contains sample names, exclude it for the heatmap
+data_matrix <- as.matrix(df_trans [-1,])
+
+# Create a heatmap
+pheatmap(data_matrix,
+         cluster_rows = hc,     # Use the hierarchical clustering results for rows
+         cluster_cols = TRUE,   # Cluster columns
+         show_rownames = TRUE,  # Show row names
+         show_colnames = TRUE,  # Show column names
+         main = "Heatmap of Clustered Data Matrix",  # Title of the heatmap
+         #color = colorRampPalette(c("red","yellow", "green"))(50),  # Color scale
+         viridis_colors <- rocket(100),
+         fontsize = 10,          # Font size
+         fontsize_row = 5,      # Font size for row names
+         fontsize_col = 7,
+         angle_col = 45,
+         annotation_names_row = TRUE,
+         annotation_names_col = TRUE          # Font size for column names
+)
+
+####Additional heatmap colour options
+
+#"magma" (or "A")
+#"inferno" (or "B")
+#"plasma" (or "C")
+#"viridis" (or "D")
+#"cividis" (or "E")
+#"rocket" (or "F")
+#"mako" (or "G")
+#"turbo" (or "H")
+
+
+
+
+
+
+
+
+
+

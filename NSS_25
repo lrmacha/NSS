@@ -1,0 +1,119 @@
+# Load required libraries
+library(readxl)
+library(factoextra)
+library(cluster)
+library(viridis)
+library(pheatmap)
+library(gridExtra)
+library(dendextend)
+
+# Read data from Excel
+df <- read_excel("C:/Users/lrmacha/Downloads/NSS_data.xlsx")
+
+# Remove leading "v" or "V" from column names
+colnames(df) <- sub("^[vV]", "", colnames(df))
+
+# Transpose and convert to data frame
+df_trans <- as.data.frame(t(df))
+
+# Use original row names from df as column names (to avoid V1, V2, ...)
+colnames(df_trans) <- rownames(df)
+
+# Convert all columns to numeric safely
+df_trans[] <- lapply(df_trans, function(x) {
+  suppressWarnings(as.numeric(as.character(x)))
+})
+
+# Check and clean missing data
+na_counts <- colSums(is.na(df_trans))
+print(na_counts)
+
+df_trans <- df_trans[rowSums(is.na(df_trans)) != ncol(df_trans), ]
+
+for (i in seq_along(df_trans)) {
+  na_idx <- is.na(df_trans[[i]])
+  df_trans[[i]][na_idx] <- mean(df_trans[[i]], na.rm = TRUE)
+}
+
+# Set max number of clusters to evaluate
+max_clusters <- 10
+
+# 1. Elbow Method
+wss <- numeric(max_clusters)
+for (k in 1:max_clusters) {
+  km <- kmeans(df_trans, centers = k, nstart = 25)
+  wss[k] <- km$tot.withinss
+}
+
+# 2. Silhouette Method
+avg_sil <- numeric(max_clusters)
+for (k in 2:max_clusters) {
+  km <- kmeans(df_trans, centers = k, nstart = 25)
+  ss <- silhouette(km$cluster, dist(df_trans))
+  avg_sil[k] <- mean(ss[, 3])
+}
+
+# Plot elbow and silhouette
+par(mfrow = c(1, 2))
+plot(1:max_clusters, wss, type = "b", xlab = "Number of Clusters (k)", ylab = "WSS", main = "Elbow Method")
+plot(1:max_clusters, avg_sil, type = "b", xlab = "Number of Clusters (k)", ylab = "Avg Silhouette Width", main = "Silhouette Method")
+par(mfrow = c(1, 1))
+
+# 3. Gap Statistic
+set.seed(123)
+gap_stat <- clusGap(df_trans, FUN = kmeans, nstart = 25, K.max = max_clusters, B = 50)
+fviz_gap_stat(gap_stat)
+
+# Determine optimal clusters
+wss_diff2 <- diff(diff(wss))
+elbow_point <- which.max(abs(wss_diff2)) + 1
+silhouette_point <- which.max(avg_sil)
+best_gap <- maxSE(gap_stat$Tab[, "gap"], gap_stat$Tab[, "SE.sim"], method = "firstSEmax")
+
+cat("Optimal clusters by elbow:", elbow_point, "\n")
+cat("Optimal clusters by silhouette:", silhouette_point, "\n")
+cat("Optimal clusters by gap statistic:", best_gap, "\n")
+
+# Use elbow method's result (change if needed)
+optimal_clusters <- elbow_point
+
+# Add rank and score
+df_trans$rank_score <- rowMeans(df_trans)
+df_trans$rank <- rank(-df_trans$rank_score, ties.method = "min")
+df_trans_ordered <- df_trans[order(df_trans$rank), ]
+
+# Display rank summary
+rank_table <- data.frame(Course = rownames(df_trans_ordered),
+                         Rank = df_trans_ordered$rank,
+                         Score = df_trans_ordered$rank_score)
+print(rank_table)
+
+# Prepare data matrix for heatmap
+heatmap_matrix <- as.matrix(df_trans_ordered[, !(colnames(df_trans_ordered) %in% c("rank", "rank_score"))])
+
+# Label rows with course name, rank, and score
+rownames(heatmap_matrix) <- paste0(
+  rownames(df_trans_ordered),
+  " (Rank: ", df_trans_ordered$rank,
+  ", Score: ", round(df_trans_ordered$rank_score, 3), ")"
+)
+
+# Cluster rows and columns
+hc_rows <- hclust(dist(heatmap_matrix), method = "ward.D2")
+hc_cols <- hclust(dist(t(heatmap_matrix)), method = "ward.D2")
+
+# Plot heatmap
+pheatmap(heatmap_matrix,
+         cluster_rows = hc_rows,
+         cluster_cols = hc_cols,
+         cutree_rows = optimal_clusters,
+         cutree_cols = optimal_clusters,
+         show_rownames = TRUE,
+         show_colnames = TRUE,
+         main = "Heatmap of Clustered Data Matrix with Course Ranks",
+         color = viridis::rocket(100),
+         fontsize = 10,
+         fontsize_row = 3,
+         fontsize_col = 5,
+         angle_col = 0
+)

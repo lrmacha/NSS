@@ -25,7 +25,7 @@ df_filtered2 <- df_filtered1 %>%
   filter(`Level of study` == "All undergraduates")
 
 # Step 5: Filter subjects starting with "Pharmacology"
-subject_filter <- "Pharmacology"
+subject_filter <- "Biomedical sciences"
 df_filtered3 <- df_filtered2 %>% 
   filter(str_starts(Subject, subject_filter))
 
@@ -85,7 +85,7 @@ for (i in seq_along(question_rankings)) {
   
   # Wrap provider names for better display
   plot_data <- plot_data %>%
-    mutate(`Provider name` = str_wrap(`Provider name`, width = 50)) %>%
+    mutate(`Provider name` = str_wrap(`Provider name`, width = 100)) %>%
     arrange(desc(`Positivity measure (%)`)) %>%
     mutate(`Provider name` = factor(`Provider name`, levels = rev(`Provider name`)))  # reverse for coord_flip
   
@@ -98,15 +98,15 @@ for (i in seq_along(question_rankings)) {
   p <- ggplot(plot_data, aes(x = `Provider name`, y = `Positivity measure (%)`, fill = Color)) +
     geom_col() +
     geom_text(aes(label = round(`Positivity measure (%)`, 1)),
-              hjust = -0.1, size = 3.5) +  # label slightly right of bars
+              hjust = -0.1, size = 1.5) +  # label slightly right of bars
     coord_flip(clip = "off") +       # allow labels outside plot area
     scale_fill_identity() +
     labs(title = wrapped_title,
          x = "Provider",
          y = "Positivity (%)") +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 5) +
     theme(
-      axis.text.y = element_text(size = 9, margin = margin(r = 10)),
+      axis.text.y = element_text(size = 5, margin = margin(r = 10)),
       axis.title.y = element_text(margin = margin(r = 15)),
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank(),

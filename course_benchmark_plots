@@ -1,0 +1,125 @@
+# Load required libraries
+library(readxl)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(writexl)
+library(ggplot2)
+
+# Step 1: Load Excel data
+NSS24_Summary_Taught_All_modes <- read_excel(
+  "C:/Users/lrmacha/Downloads/NSS25_Summary_Taught_All_modes.xlsx", 
+  sheet = "CAH_level_3"
+)
+
+df <- NSS24_Summary_Taught_All_modes
+
+# Step 2: Use 3rd row as column names
+colnames(df) <- as.character(unlist(df[3, ]))
+
+# Step 3: Remove the third row (now the header)
+df_filtered1 <- df[-3, ]
+
+# Step 4: Filter to 'All undergraduates'
+df_filtered2 <- df_filtered1 %>% 
+  filter(`Level of study` == "All undergraduates")
+
+# Step 5: Filter subjects starting with "Pharmacology"
+subject_filter <- "Pharmacology"
+df_filtered3 <- df_filtered2 %>% 
+  filter(str_starts(Subject, subject_filter))
+
+# Step 6: Get all unique questions
+unique_questions <- unique(df_filtered3$Question)
+
+# Step 7: Loop through each question and rank providers by positivity
+question_rankings <- list()
+highlight_provider <- "University of Northampton, The"
+
+for (q in unique_questions) {
+  
+  df_q <- df_filtered3 %>%
+    filter(Question == q) %>%
+    select(`Provider name`, `Question`, `Positivity measure (%)`) %>%
+    mutate(`Positivity measure (%)` = as.numeric(`Positivity measure (%)`)) %>%  # convert to numeric
+    arrange(desc(`Positivity measure (%)`)) %>%
+    mutate(Rank = row_number())
+  
+  question_rankings[[q]] <- df_q
+}
+
+# Step 8: Clean sheet names (remove invalid Excel characters and truncate to 31 chars)
+safe_names <- names(question_rankings) %>%
+  str_replace_all("[\\[\\]\\*\\?/:\\\\]", "") %>%  # Remove invalid characters
+  str_trunc(31, side = "right")                   # Truncate to 31 chars
+
+# Save truncated safe names separately for Excel sheets
+excel_sheet_names <- safe_names
+names(question_rankings) <- excel_sheet_names
+
+# Step 9: Export each question's ranking to Excel with safe sheet names
+write_xlsx(question_rankings, path = paste0("C:/Users/lrmacha/Downloads/", subject_filter, "_Positivity_Rankings.xlsx"))
+
+# Step 10: Combine into one long table (optional)
+combined_rankings <- bind_rows(question_rankings, .id = "Question_Short")
+head(combined_rankings)
+
+# Step 11: Generate and save plots as JPEGs into subject-named folder, highlight University of Northampton
+output_dir <- paste0("C:/Users/lrmacha/Downloads/", subject_filter, "_Plots")
+dir.create(output_dir, showWarnings = FALSE)
+
+for (i in seq_along(question_rankings)) {
+  plot_data <- question_rankings[[i]]
+  
+  # Use full original question text from data for the plot title
+  question_title <- unique(plot_data$Question)
+  
+  # Convert positivity to numeric again (to be safe)
+  plot_data <- plot_data %>%
+    mutate(`Positivity measure (%)` = as.numeric(`Positivity measure (%)`)) %>%
+    filter(!is.na(`Positivity measure (%)`))  # remove NAs
+  
+  # Add color column: red for Northampton, steelblue for others
+  plot_data <- plot_data %>%
+    mutate(Color = if_else(`Provider name` == highlight_provider, "red", "steelblue"))
+  
+  # Wrap provider names for better display
+  plot_data <- plot_data %>%
+    mutate(`Provider name` = str_wrap(`Provider name`, width = 50)) %>%
+    arrange(desc(`Positivity measure (%)`)) %>%
+    mutate(`Provider name` = factor(`Provider name`, levels = rev(`Provider name`)))  # reverse for coord_flip
+  
+  # Wrap the question title for the plot heading (wrap at ~80 characters)
+  wrapped_title <- str_wrap(question_title, width = 80)
+  
+  # Calculate max positivity safely for expand_limits
+  max_pos <- max(plot_data$`Positivity measure (%)`, na.rm = TRUE)
+  
+  p <- ggplot(plot_data, aes(x = `Provider name`, y = `Positivity measure (%)`, fill = Color)) +
+    geom_col() +
+    geom_text(aes(label = round(`Positivity measure (%)`, 1)),
+              hjust = -0.1, size = 3.5) +  # label slightly right of bars
+    coord_flip(clip = "off") +       # allow labels outside plot area
+    scale_fill_identity() +
+    labs(title = wrapped_title,
+         x = "Provider",
+         y = "Positivity (%)") +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.y = element_text(size = 9, margin = margin(r = 10)),
+      axis.title.y = element_text(margin = margin(r = 15)),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      plot.margin = margin(5.5, 10, 5.5, 120),  # increase left margin for provider names
+      plot.title = element_text(size = 10),
+      plot.title.position = "plot"
+    ) +
+    expand_limits(y = max_pos * 1.15)  # space for labels
+  
+  # Save as JPEG
+  # Use safe file name by removing or replacing invalid path chars
+  safe_file_name <- str_replace_all(question_title, "[\\[\\]\\*\\?/:\\\\]", "")
+  plot_filename <- paste0(output_dir, "/", safe_file_name, ".jpeg")
+  ggsave(plot_filename, plot = p, width = 10, height = 6, dpi = 300)
+}
+
